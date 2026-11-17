@@ -13,3 +13,4 @@ runs/
 *.zip
 .ipynb_checkpoints/
 *.egg-info/
+logs/
