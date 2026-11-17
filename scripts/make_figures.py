@@ -27,8 +27,8 @@ CAPITALS = [("france", "paris"), ("germany", "berlin"), ("italy", "rome"), ("spa
             ("china", "beijing"), ("sweden", "stockholm")]
 GENDER = [("man", "woman"), ("king", "queen"), ("uncle", "aunt"), ("brother", "sister"), ("father", "mother"),
           ("son", "daughter"), ("boy", "girl"), ("husband", "wife"), ("prince", "princess"), ("he", "she")]
-COMPARATIVE = [("good", "better"), ("bad", "worse"), ("big", "bigger"), ("large", "larger"), ("small", "smaller"),
-               ("fast", "faster"), ("old", "older"), ("high", "higher"), ("long", "longer"), ("strong", "stronger")]
+PAST = [("go", "went"), ("take", "took"), ("make", "made"), ("come", "came"), ("see", "saw"), ("give", "gave"),
+        ("find", "found"), ("write", "wrote"), ("run", "ran"), ("speak", "spoke"), ("begin", "began"), ("know", "knew")]
 CATEGORIES = {
     "countries": "france germany italy spain japan china russia india brazil canada egypt greece poland sweden norway turkey".split(),
     "capitals": "paris berlin rome madrid tokyo beijing moscow delhi athens warsaw stockholm oslo cairo vienna london".split(),
@@ -40,10 +40,24 @@ CATEGORIES = {
 }
 
 
-def pca2(X: np.ndarray) -> np.ndarray:
-    Xc = X - X.mean(0)
-    _, _, vt = np.linalg.svd(Xc, full_matrices=False)
-    return Xc @ vt[:2].T
+def offset_projection(P: np.ndarray, n_pairs: int) -> tuple[np.ndarray, float]:
+    """2-D view of ``n_pairs`` (source, target) vector pairs stored as rows ``[s0, t0, s1, t1, ...]``.
+
+    The x-axis is the unit mean offset ``mean(t_i - s_i)``; the y-axis is the leading principal direction of the points
+    after removing their x-component. Parallel arrows in this view mean the offsets agree *in the full space*;
+    the returned number is the mean cosine between each pair's offset and the mean offset in the original space.
+    """
+    src, tgt = P[0::2], P[1::2]
+    off = tgt - src
+    u = off.mean(0)
+    u /= np.linalg.norm(u)
+    cos = float(np.mean((off / np.linalg.norm(off, axis=1, keepdims=True)) @ u))
+    X = P - P.mean(0)
+    X = X - np.outer(X @ u, u)
+    _, _, vt = np.linalg.svd(X, full_matrices=False)
+    v = vt[0]
+    Y = (P - P.mean(0)) @ np.stack([u, v], 1)
+    return Y, cos
 
 
 def usable(emb: Embeddings, pairs: list[tuple[str, str]], max_rank: int = 30_000) -> list[tuple[str, str]]:
@@ -53,13 +67,7 @@ def usable(emb: Embeddings, pairs: list[tuple[str, str]], max_rank: int = 30_000
 def pair_panel(ax, emb: Embeddings, pairs, title: str, c_from: str, c_to: str, note: str | None = None) -> None:
     pairs = usable(emb, pairs)
     words = [w for p in pairs for w in p]
-    X = emb.unit[[emb.index[w] for w in words]]
-    P = pca2(X)
-    # orient so that the mean offset points to the right
-    off = np.mean([P[2 * i + 1] - P[2 * i] for i in range(len(pairs))], 0)
-    ang = -np.arctan2(off[1], off[0])
-    R = np.array([[np.cos(ang), -np.sin(ang)], [np.sin(ang), np.cos(ang)]])
-    P = P @ R.T
+    P, cos = offset_projection(emb.unit[[emb.index[w] for w in words]], len(pairs))
     for i, (a, b) in enumerate(pairs):
         ax.annotate("", xy=P[2 * i + 1], xytext=P[2 * i], arrowprops=dict(arrowstyle="-|>", color="#888888", lw=1.2, shrinkA=3, shrinkB=3))
         ax.scatter(*P[2 * i], color=c_from, s=26, zorder=3)
@@ -70,25 +78,30 @@ def pair_panel(ax, emb: Embeddings, pairs, title: str, c_from: str, c_to: str, n
     ax.set_xticks([])
     ax.set_yticks([])
     ax.margins(0.22)
+    lo, hi = ax.get_ylim()
+    ax.set_ylim(lo - 0.05 * (hi - lo), hi + 0.45 * (hi - lo))  # head-room for the analogy box
     ax.spines[["left", "bottom"]].set_visible(False)
-    offs = np.array([P[2 * i + 1] - P[2 * i] for i in range(len(pairs))])
-    cos = (offs / np.linalg.norm(offs, axis=1, keepdims=True)) @ (off / np.linalg.norm(off))
-    ax.text(0.02, 0.02, f"mean cos(offset, mean offset) in 2-D: {cos.mean():.2f}", transform=ax.transAxes, fontsize=7, color="#555555")
+    ax.text(0.02, 0.02, f"mean cosine(pair offset, mean offset), full 300-D space: {cos:.2f}", transform=ax.transAxes, fontsize=7, color="#555555")
     if note:
         ax.text(0.02, 0.97, note, transform=ax.transAxes, fontsize=8, va="top", bbox=dict(boxstyle="round", fc="white", ec="#cccccc"))
 
 
-def analogy_note(emb: Embeddings, a: str, b: str, c: str) -> str:
+def analogy_note(emb: Embeddings, a: str, b: str, c: str, section: str, acc: dict[str, tuple[int, int]]) -> str:
     top = emb.most_similar([b, c], [a], topn=3, restrict=30_000)
-    return f"{b} − {a} + {c}\n→ " + ", ".join(f"{w} ({s:.2f})" for w, s in top)
+    k, n = acc[section]
+    return f"{b} − {a} + {c} →\n{', '.join(f'{w} ({s:.2f})' for w, s in top)}\n[{section}: {100 * k / n:.0f}% top-1, n={n}]"
 
 
 def hero(emb: Embeddings, path: Path, label: str) -> None:
-    fig, axes = plt.subplots(1, 3, figsize=(15, 4.8))
-    pair_panel(axes[0], emb, CAPITALS, "country → capital", "#2e86ab", "#d1495b", analogy_note(emb, "france", "paris", "italy"))
-    pair_panel(axes[1], emb, GENDER, "male → female", "#2e86ab", "#d1495b", analogy_note(emb, "man", "king", "woman"))
-    pair_panel(axes[2], emb, COMPARATIVE, "adjective → comparative", "#2e86ab", "#d1495b", analogy_note(emb, "good", "better", "bad"))
-    fig.suptitle(f"Relations are (approximately) parallel offsets: PCA of {label}", fontsize=12, y=1.0)
+    from w2v.evaluate import evaluate_analogies
+
+    res = evaluate_analogies(emb, device="cpu")
+    acc = {s: (res.correct[s], res.total[s]) for s in res.total}
+    fig, axes = plt.subplots(1, 3, figsize=(15, 4.9))
+    pair_panel(axes[0], emb, CAPITALS, "country → capital", "#2e86ab", "#d1495b", analogy_note(emb, "france", "paris", "germany", "capital-common-countries", acc))
+    pair_panel(axes[1], emb, GENDER, "male → female", "#2e86ab", "#d1495b", analogy_note(emb, "man", "king", "woman", "family", acc))
+    pair_panel(axes[2], emb, PAST, "verb → past tense", "#2e86ab", "#d1495b", analogy_note(emb, "write", "wrote", "take", "gram7-past-tense", acc))
+    fig.suptitle(f"Linear relations in {label}: x = mean offset direction, y = leading residual component", fontsize=11.5, y=1.0)
     fig.tight_layout()
     fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
@@ -124,13 +137,13 @@ def tsne_figure(emb: Embeddings, path: Path) -> None:
 
 def training_curves(runs: dict[str, Path], path: Path) -> None:
     fig, axes = plt.subplots(1, 2, figsize=(11, 3.8))
-    colors = {"skip-gram": "#d1495b", "CBOW": "#2e86ab", "GloVe": "#edae49"}
+    colors = {"skip-gram": "#d1495b", "CBOW": "#2e86ab", "GloVe": "#edae49", "GloVe (30-epoch run)": "#8c6d1f"}
     for name, d in runs.items():
         h = json.loads((d / "history.json").read_text())
         ev = h["epoch_eval"]
         ep = [e["epoch"] for e in ev]
-        axes[1].plot(ep, [100 * e["overall"] for e in ev], "o-", color=colors[name], label=name, ms=3)
-        if name != "GloVe":
+        axes[1].plot(ep, [100 * e["overall"] for e in ev], "o-" if "30" not in name else "s--", color=colors[name], label=name, ms=3)
+        if not name.startswith("GloVe"):
             prog = np.array(h["progress"]) * h["config"]["epochs"]
             loss = np.array(h["loss"])
             k = max(1, len(loss) // 200)
@@ -142,7 +155,7 @@ def training_curves(runs: dict[str, Path], path: Path) -> None:
     axes[0].legend(frameon=False)
     axes[1].set_xlabel("epoch")
     axes[1].set_ylabel("Google analogy accuracy (%)")
-    axes[1].set_title("Analogy accuracy during training (text8, top-30k vocabulary)", fontsize=10)
+    axes[1].set_title("Analogy accuracy during training (text8, top-30k candidates)", fontsize=10)
     axes[1].legend(frameon=False)
     fig.tight_layout()
     fig.savefig(path, bbox_inches="tight")
@@ -191,6 +204,25 @@ def bias_figure(embs: dict[str, Embeddings], path: Path) -> dict:
     return stats
 
 
+def ablation_figure(path: Path) -> None:
+    d = json.loads(Path("results/ablations.json").read_text())
+    titles = {"negative": "negative samples K", "sample": "sub-sampling threshold t", "window": "max window size", "dim": "dimension"}
+    fig, axes = plt.subplots(1, len(d), figsize=(3.6 * len(d), 3.3), sharey=True)
+    for ax, (name, rows) in zip(np.atleast_1d(axes), d.items()):
+        x = range(len(rows))
+        for key, lab, c in (("semantic", "semantic", "#d1495b"), ("syntactic", "syntactic", "#2e86ab"), ("overall", "overall", "#333333")):
+            ax.plot(x, [100 * r[key] for r in rows], "o-", color=c, label=lab, ms=4)
+        ax.set_xticks(list(x), [r["value"] for r in rows])
+        ax.set_xlabel(titles.get(name, name))
+        ax.grid(alpha=0.25)
+    np.atleast_1d(axes)[0].set_ylabel("Google analogy accuracy (%)")
+    np.atleast_1d(axes)[0].legend(frameon=False, fontsize=8)
+    fig.suptitle("Skip-gram ablations on text8 (5 epochs, dim 200 unless varied)", fontsize=10)
+    fig.tight_layout()
+    fig.savefig(path, bbox_inches="tight")
+    plt.close(fig)
+
+
 def neighbours_table(embs: dict[str, Embeddings], words: list[str], topn: int = 6) -> str:
     lines = ["| word | " + " | ".join(embs) + " |", "|---|" + "---|" * len(embs)]
     for w in words:
@@ -206,6 +238,7 @@ def main() -> None:
     p.add_argument("--sgns", type=Path, default=Path("runs/sgns"))
     p.add_argument("--cbow", type=Path, default=Path("runs/cbow"))
     p.add_argument("--glove", type=Path, default=Path("runs/glove"))
+    p.add_argument("--glove30", type=Path, default=Path("runs/glove"))
     p.add_argument("--gensim-sg", type=Path, default=Path("runs/gensim_sg"))
     p.add_argument("--metrics", type=Path, default=Path("results/metrics.json"))
     p.add_argument("--pretrained", action="store_true")
@@ -216,7 +249,7 @@ def main() -> None:
     sg = Embeddings.load(args.sgns / "vectors.npz")
     hero(sg, ASSETS / "hero.png", "skip-gram vectors trained from scratch on text8 (17M tokens)")
     tsne_figure(sg, ASSETS / "tsne_categories.png")
-    runs = {k: d for k, d in (("skip-gram", args.sgns), ("CBOW", args.cbow), ("GloVe", args.glove)) if (d / "history.json").exists()}
+    runs = {k: d for k, d in (("skip-gram", args.sgns), ("CBOW", args.cbow), ("GloVe", args.glove), ("GloVe (30-epoch run)", args.glove30)) if (d / "history.json").exists()}
     training_curves(runs, ASSETS / "training_curves.png")
     embs: dict[str, Embeddings] = {"skip-gram (ours)": sg}
     if (args.glove / "vectors.npz").exists():
@@ -229,14 +262,16 @@ def main() -> None:
     nb = neighbours_table(embs, ["king", "france", "computer", "apple", "music", "good", "run", "einstein"])
     Path("results/neighbours.md").write_text(nb + "\n")
     print(nb)
-    bias_embs = {k: v for k, v in embs.items() if k in ("skip-gram (ours)", "GloVe 6B (pretrained)")}
+    bias_embs = {k: v for k, v in embs.items() if k in ("skip-gram (ours)", "GloVe (ours)", "GloVe 6B (pretrained)")}
     stats = bias_figure(bias_embs, ASSETS / "bias_projection.png")
     Path("results/bias.json").write_text(json.dumps(stats, indent=1))
     print(stats)
+    if Path("results/ablations.json").exists():
+        ablation_figure(ASSETS / "ablations.png")
     if args.metrics.exists():
         m = json.loads(args.metrics.read_text())
         names = {"sgns": "skip-gram (ours)", "gensim_sg": "skip-gram (gensim)", "cbow": "CBOW (ours)", "gensim_cbow": "CBOW (gensim)",
-                 "glove": "GloVe (ours)", "glove_pretrained_6B": "GloVe 6B (pretrained)"}
+                 "glove": "GloVe (ours, 10 ep)", "glove30": "GloVe (ours, 30 ep)", "glove_pretrained_6B": "GloVe 6B (pretrained)"}
         mm = {k: {**v, "analogy_sem": v.get("common_analogy_sem", v["analogy_sem"]), "analogy_syn": v.get("common_analogy_syn", v["analogy_syn"])} for k, v in m.items()}
         benchmark_bars(mm, ASSETS / "benchmarks.png", names)
 
