@@ -1,0 +1,17 @@
+{
+ "skip-gram (ours)": {
+  "direct_bias": 0.06922213702209239,
+  "pc1_variance": 0.29392218589782715,
+  "n_occupations": 68
+ },
+ "GloVe (ours)": {
+  "direct_bias": 0.09979801291860092,
+  "pc1_variance": 0.2772744297981262,
+  "n_occupations": 68
+ },
+ "GloVe 6B (pretrained)": {
+  "direct_bias": 0.11622426631322628,
+  "pc1_variance": 0.5191548466682434,
+  "n_occupations": 71
+ }
+}

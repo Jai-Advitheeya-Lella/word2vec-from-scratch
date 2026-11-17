@@ -1,0 +1,14 @@
+co-occurrence: 46,397,151 non-zeros (0.91% dense) in 3s  peak GPU 0 MB
+epoch 1/12  loss/nnz 54905351695.5049  [127s, peak 1549 MB]
+epoch 2/12  loss/nnz 42118288968.1319  [216s, peak 1549 MB]
+epoch 3/12  loss/nnz 35111342331.4683  [293s, peak 1549 MB]  analogy sem 0.000 syn 0.000 all 0.000
+epoch 4/12  loss/nnz 30535582360.6436  [350s, peak 1557 MB]
+epoch 5/12  loss/nnz 27187876336.0590  [426s, peak 1557 MB]
+epoch 6/12  loss/nnz 24574711099.4097  [505s, peak 1557 MB]  analogy sem 0.000 syn 0.000 all 0.000
+epoch 7/12  loss/nnz 22468972607.3638  [593s, peak 1557 MB]
+epoch 8/12  loss/nnz 20714738049.1886  [685s, peak 1557 MB]
+epoch 9/12  loss/nnz 19226708580.0326  [770s, peak 1557 MB]  analogy sem 0.000 syn 0.000 all 0.000
+epoch 10/12  loss/nnz 17944983500.4405  [868s, peak 1557 MB]
+epoch 11/12  loss/nnz 16824822795.3677  [960s, peak 1557 MB]
+epoch 12/12  loss/nnz 15839163547.1165  [1045s, peak 1557 MB]  analogy sem 0.000 syn 0.000 all 0.000
+saved runs/sweep_glove_lr0.2_xm10 (1047s, peak GPU 1557 MB)

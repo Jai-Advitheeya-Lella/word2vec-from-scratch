@@ -1,0 +1,8 @@
+co-occurrence: 46,397,151 non-zeros (0.91% dense) in 2s  peak GPU 0 MB
+epoch 1/6  loss/nnz 0.0900  [106s, peak 1029 MB]
+epoch 2/6  loss/nnz 0.0640  [207s, peak 1029 MB]  analogy sem 0.045 syn 0.036 all 0.039
+epoch 3/6  loss/nnz 0.0540  [302s, peak 1036 MB]
+epoch 4/6  loss/nnz 0.0457  [378s, peak 1036 MB]  analogy sem 0.437 syn 0.244 all 0.309
+epoch 5/6  loss/nnz 199004510.2077  [490s, peak 1036 MB]
+epoch 6/6  loss/nnz 310710764.0348  [581s, peak 1036 MB]  analogy sem 0.000 syn 0.000 all 0.000
+saved runs/sweep2_lr0.3_xm10 (583s, peak GPU 1036 MB)

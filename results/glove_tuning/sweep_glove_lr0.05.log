@@ -1,0 +1,7 @@
+co-occurrence: 46,397,151 non-zeros (0.91% dense) in 0s  peak GPU 0 MB
+epoch 1/12  loss/nnz 0.0232  [71s, peak 1549 MB]
+epoch 2/12  loss/nnz 0.0151  [137s, peak 1549 MB]
+epoch 3/12  loss/nnz 0.0137  [190s, peak 1549 MB]  analogy sem 0.012 syn 0.014 all 0.013
+epoch 4/12  loss/nnz 0.0125  [255s, peak 1557 MB]
+epoch 5/12  loss/nnz 0.0115  [336s, peak 1557 MB]
+epoch 6/12  loss/nnz 0.0106  [408s, peak 1557 MB]  analogy sem 0.056 syn 0.078 all 0.071
