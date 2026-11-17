@@ -85,3 +85,15 @@ def test_gender_direction_recovers_planted_axis():
     assert spectrum[0] > 0.5
     assert direct_bias(emb, ["nurse", "engineer"], g) > 0.1
     assert direct_bias(neutralize(emb, ["nurse", "engineer"], g), ["nurse", "engineer"], g) < 1e-6
+
+
+def test_only_words_restricts_the_question_set():
+    emb = _random_embeddings()
+    full = evaluate_analogies(emb, device="cpu")
+    allowed = set(emb.words[:400])
+    sub = evaluate_analogies(emb, device="cpu", only_words=allowed)
+    assert 0 < sum(sub.total.values()) < sum(full.total.values())
+    ref = sum(
+        1 for _, qs in load_analogies(analogy_path()) for q in qs if set(q) <= allowed
+    )
+    assert sum(sub.total.values()) == ref

@@ -118,8 +118,13 @@ def evaluate_analogies(
     method: str = "add",
     device: str | torch.device | None = None,
     batch: int = 512,
+    only_words: set[str] | None = None,
 ) -> AnalogyResult:
-    """Accuracy on the Google analogy set with 3CosAdd (``method="add"``) or 3CosMul (``"mul"``)."""
+    """Accuracy on the Google analogy set with 3CosAdd (``method="add"``) or 3CosMul (``"mul"``).
+
+    ``only_words`` additionally drops every question that mentions a word outside the given set;
+    this evaluates models with different vocabularies on a common question subset.
+    """
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
     sections = load_analogies(path or analogy_path())
@@ -128,7 +133,12 @@ def evaluate_analogies(
     E = torch.from_numpy(emb.unit[:restrict]).to(device)
     res = AnalogyResult(method=method, n_questions=sum(len(q) for _, q in sections))
     for name, qs in sections:
-        rows = [(idx[a], idx[b], idx[c], idx[d]) for a, b, c, d in qs if a in idx and b in idx and c in idx and d in idx]
+        rows = [
+            (idx[a], idx[b], idx[c], idx[d])
+            for a, b, c, d in qs
+            if a in idx and b in idx and c in idx and d in idx
+            and (only_words is None or {a, b, c, d} <= only_words)
+        ]
         res.total[name] = len(rows)
         res.correct[name] = 0
         if not rows:
@@ -163,10 +173,10 @@ def evaluate_similarity(emb: Embeddings, path: str | Path) -> tuple[float, float
     return float(rho), len(got) / len(pairs)
 
 
-def full_report(emb: Embeddings, restrict: int = 30_000) -> dict[str, float]:
-    """All intrinsic metrics in one flat dict."""
-    add = evaluate_analogies(emb, restrict=restrict, method="add")
-    mul = evaluate_analogies(emb, restrict=restrict, method="mul")
+def full_report(emb: Embeddings, restrict: int = 30_000, only_words: set[str] | None = None) -> dict[str, float]:
+    """All intrinsic metrics in one flat dict (``only_words``: common question subset, see above)."""
+    add = evaluate_analogies(emb, restrict=restrict, method="add", only_words=only_words)
+    mul = evaluate_analogies(emb, restrict=restrict, method="mul", only_words=only_words)
     ws, ws_cov = evaluate_similarity(emb, wordsim_path())
     sl, sl_cov = evaluate_similarity(emb, simlex_path())
     return {
