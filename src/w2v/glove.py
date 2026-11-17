@@ -222,6 +222,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--batch", type=int, default=16384)
     p.add_argument("--partitions", type=int, default=4, help="row partitions for co-occurrence counting (memory)")
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--clip", type=float, default=100.0,
+                   help="clip each lr-scaled gradient element to [-clip, clip] (glove.c: 100, i.e. effectively off)")
     p.add_argument("--average-duplicates", action=argparse.BooleanOptionalAction, default=True,
                    help="average (default) or sum the gradients of rows repeated within a batch")
     p.add_argument("--eval-every", type=int, default=5)
@@ -255,7 +257,7 @@ def train(args: argparse.Namespace) -> Embeddings:
         tot = torch.zeros((), device=dev)
         for s in range(0, nnz, args.batch):
             sl = slice(s, s + args.batch)
-            tot += model.step(r_ep[sl].to(dev).long(), c_ep[sl].to(dev).long(), v_ep[sl].to(dev), args.lr, args.x_max, args.alpha)
+            tot += model.step(r_ep[sl].to(dev).long(), c_ep[sl].to(dev).long(), v_ep[sl].to(dev), args.lr, args.x_max, args.alpha, args.clip)
         del r_ep, c_ep, v_ep
         hist["epoch"].append(ep + 1)
         hist["loss"].append(float(tot) / nnz)
