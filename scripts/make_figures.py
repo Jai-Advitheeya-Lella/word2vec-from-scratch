@@ -60,20 +60,37 @@ def offset_projection(P: np.ndarray, n_pairs: int) -> tuple[np.ndarray, float]:
     return Y, cos
 
 
+def declutter(fig, texts: list, step: float = 1.5, max_steps: int = 40) -> None:
+    """Greedy label placement: nudge each annotation vertically (in points) until it no longer overlaps an earlier one."""
+    fig.canvas.draw()
+    r = fig.canvas.get_renderer()
+    placed = []
+    for t in sorted(texts, key=lambda t: t.get_window_extent(r).y0):
+        dx, dy = t.xyann
+        for k in range(2 * max_steps + 1):
+            t.xyann = (dx, dy + step * ((k + 1) // 2) * (1 if k % 2 else -1))
+            bb = t.get_window_extent(r)
+            if not any(bb.overlaps(q) for q in placed):
+                break
+        placed.append(t.get_window_extent(r))
+
+
 def usable(emb: Embeddings, pairs: list[tuple[str, str]], max_rank: int = 30_000) -> list[tuple[str, str]]:
     return [(a, b) for a, b in pairs if emb.index.get(a, 10**9) < max_rank and emb.index.get(b, 10**9) < max_rank]
 
 
-def pair_panel(ax, emb: Embeddings, pairs, title: str, c_from: str, c_to: str, note: str | None = None) -> None:
+def pair_panel(ax, emb: Embeddings, pairs, title: str, c_from: str, c_to: str, note: str | None = None) -> list:
+    """Draw one panel; returns its word labels so the caller can de-clutter them once the layout is final."""
     pairs = usable(emb, pairs)
+    labels = []
     words = [w for p in pairs for w in p]
     P, cos = offset_projection(emb.unit[[emb.index[w] for w in words]], len(pairs))
     for i, (a, b) in enumerate(pairs):
         ax.annotate("", xy=P[2 * i + 1], xytext=P[2 * i], arrowprops=dict(arrowstyle="-|>", color="#888888", lw=1.2, shrinkA=3, shrinkB=3))
         ax.scatter(*P[2 * i], color=c_from, s=26, zorder=3)
         ax.scatter(*P[2 * i + 1], color=c_to, s=26, zorder=3)
-        ax.annotate(a, P[2 * i], textcoords="offset points", xytext=(-4, 4), ha="right", fontsize=8, color=c_from)
-        ax.annotate(b, P[2 * i + 1], textcoords="offset points", xytext=(4, 4), ha="left", fontsize=8, color=c_to)
+        labels.append(ax.annotate(a, P[2 * i], textcoords="offset points", xytext=(-4, 4), ha="right", fontsize=8, color=c_from))
+        labels.append(ax.annotate(b, P[2 * i + 1], textcoords="offset points", xytext=(4, 4), ha="left", fontsize=8, color=c_to))
     ax.set_title(title, fontsize=10)
     ax.set_xticks([])
     ax.set_yticks([])
@@ -84,6 +101,7 @@ def pair_panel(ax, emb: Embeddings, pairs, title: str, c_from: str, c_to: str, n
     ax.text(0.02, 0.02, f"mean cosine(pair offset, mean offset), full 300-D space: {cos:.2f}", transform=ax.transAxes, fontsize=7, color="#555555")
     if note:
         ax.text(0.02, 0.97, note, transform=ax.transAxes, fontsize=8, va="top", bbox=dict(boxstyle="round", fc="white", ec="#cccccc"))
+    return labels
 
 
 def analogy_note(emb: Embeddings, a: str, b: str, c: str, section: str, acc: dict[str, tuple[int, int]]) -> str:
@@ -98,11 +116,13 @@ def hero(emb: Embeddings, path: Path, label: str) -> None:
     res = evaluate_analogies(emb, device="cpu")
     acc = {s: (res.correct[s], res.total[s]) for s in res.total}
     fig, axes = plt.subplots(1, 3, figsize=(15, 4.9))
-    pair_panel(axes[0], emb, CAPITALS, "country → capital", "#2e86ab", "#d1495b", analogy_note(emb, "france", "paris", "germany", "capital-common-countries", acc))
-    pair_panel(axes[1], emb, GENDER, "male → female", "#2e86ab", "#d1495b", analogy_note(emb, "man", "king", "woman", "family", acc))
-    pair_panel(axes[2], emb, PAST, "verb → past tense", "#2e86ab", "#d1495b", analogy_note(emb, "write", "wrote", "take", "gram7-past-tense", acc))
+    labels = []
+    labels += pair_panel(axes[0], emb, CAPITALS, "country → capital", "#2e86ab", "#d1495b", analogy_note(emb, "france", "paris", "germany", "capital-common-countries", acc))
+    labels += pair_panel(axes[1], emb, GENDER, "male → female", "#2e86ab", "#d1495b", analogy_note(emb, "man", "king", "woman", "family", acc))
+    labels += pair_panel(axes[2], emb, PAST, "verb → past tense", "#2e86ab", "#d1495b", analogy_note(emb, "write", "wrote", "take", "gram7-past-tense", acc))
     fig.suptitle(f"Linear relations in {label}: x = mean offset direction, y = leading residual component", fontsize=11.5, y=1.0)
     fig.tight_layout()
+    declutter(fig, labels)
     fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
 
@@ -123,14 +143,14 @@ def tsne_figure(emb: Embeddings, path: Path) -> None:
     for c in CATEGORIES:
         m = np.array(cats) == c
         ax.scatter(Y[m, 0], Y[m, 1], s=18, color=cmap[c], label=c)
-    for (x, y), w in zip(Y, words):
-        ax.annotate(w, (x, y), textcoords="offset points", xytext=(3, 3), fontsize=7)
+    labels = [ax.annotate(w, (x, y), textcoords="offset points", xytext=(3, 3), fontsize=7) for (x, y), w in zip(Y, words)]
     ax.legend(frameon=False, fontsize=8, ncol=2)
     ax.set_xticks([])
     ax.set_yticks([])
     ax.spines[["left", "bottom"]].set_visible(False)
     ax.set_title("t-SNE of skip-gram vectors (text8): semantic categories separate", fontsize=11)
     fig.tight_layout()
+    declutter(fig, labels, step=1.0)
     fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
 
